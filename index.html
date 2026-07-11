@@ -72,7 +72,8 @@
   .btn-sm{padding:6px 11px; font-size:.8rem; border-radius:8px}
   /* ---------- Layout ---------- */
   main{display:flex; flex-direction:column}
-  #map{height:52vh; min-height:320px; background:#0a100d}
+  /* position+z-index trap Leaflet's internal 1000-level controls under the header/FAB */
+  #map{height:52vh; min-height:320px; background:#0a100d; position:relative; z-index:1}
   .leaflet-container{font:inherit}
   .legend-strip{
     display:flex; gap:8px; overflow-x:auto; padding:10px 20px;
