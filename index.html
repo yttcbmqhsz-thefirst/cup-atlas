@@ -24,6 +24,7 @@
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     background:var(--bg); color:var(--text);
+    display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden;
   }
   /* ---------- Header ---------- */
   header{
@@ -70,10 +71,13 @@
   .btn-ghost{background:var(--panel-2); color:var(--text); border:1px solid var(--line)}
   .btn-danger{background:var(--danger); color:#fff}
   .btn-sm{padding:6px 11px; font-size:.8rem; border-radius:8px}
-  /* ---------- Layout ---------- */
-  main{display:flex; flex-direction:column}
-  /* position+z-index trap Leaflet's internal 1000-level controls under the header/FAB */
-  #map{height:52vh; min-height:320px; background:#0a100d; position:relative; z-index:1}
+  /* ---------- Layout: tabbed views ---------- */
+  main{flex:1; position:relative; overflow:hidden}
+  .view{position:absolute; inset:0; display:none; flex-direction:column}
+  .view.active{display:flex}
+  #viewCups{overflow-y:auto; -webkit-overflow-scrolling:touch}
+  /* position+z-index trap Leaflet's internal 1000-level controls under the header/tabbar */
+  #map{flex:1; min-height:0; background:#0a100d; position:relative; z-index:1}
   .leaflet-container{font:inherit}
   .legend-strip{
     display:flex; gap:8px; overflow-x:auto; padding:10px 20px;
@@ -90,14 +94,20 @@
   /* ---------- Cup list ---------- */
   #list{
     display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
-    gap:14px; padding:18px 20px 90px;
+    gap:14px; padding:18px 20px 24px;
   }
   .card{
     background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
-    overflow:hidden; cursor:pointer; transition:transform .12s, border-color .12s;
+    overflow:hidden; cursor:pointer; transition:transform .12s, border-color .12s, box-shadow .12s;
     display:flex; flex-direction:column;
+    box-shadow:0 2px 10px rgba(0,0,0,.25);
   }
-  .card:hover{transform:translateY(-2px); border-color:var(--green-bright)}
+  .card:hover{transform:translateY(-2px); border-color:var(--green-bright); box-shadow:0 6px 18px rgba(0,0,0,.35)}
+  .who{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap}
+  .chip{
+    font-size:.68rem; padding:2px 9px; border-radius:999px;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--muted); white-space:nowrap;
+  }
   .card .thumb{
     height:150px; background:var(--panel-2); display:flex; align-items:center;
     justify-content:center; font-size:3rem; overflow:hidden; position:relative;
@@ -114,14 +124,25 @@
     grid-column:1/-1; text-align:center; color:var(--muted); padding:50px 20px; line-height:1.7;
   }
   .empty .big{font-size:3rem}
-  /* ---------- FAB ---------- */
-  .fab{
-    position:fixed; right:22px; bottom:calc(22px + env(safe-area-inset-bottom)); z-index:1100;
-    width:60px; height:60px; border-radius:50%; border:none; cursor:pointer;
-    background:var(--green); color:#fff; font-size:2rem; line-height:1;
-    box-shadow:0 6px 18px rgba(0,0,0,.45);
+  /* ---------- Bottom tab bar ---------- */
+  .tabbar{
+    flex:none; display:flex; align-items:center; justify-content:space-around;
+    background:var(--panel); border-top:1px solid var(--line); z-index:1200;
+    padding:6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
   }
-  .fab:hover{background:var(--green-bright)}
+  .tab{
+    background:none; border:none; color:var(--muted); cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    font-size:.68rem; letter-spacing:.4px; padding:4px 22px; border-radius:12px;
+  }
+  .tab .ico{font-size:1.35rem; line-height:1}
+  .tab.active{color:var(--green-bright)}
+  .tab-add{
+    width:58px; height:58px; border-radius:50%; border:4px solid var(--bg); cursor:pointer;
+    background:var(--green); color:#fff; font-size:2rem; line-height:1; margin-top:-26px;
+    box-shadow:0 4px 14px rgba(0,0,0,.4);
+  }
+  .tab-add:hover{background:var(--green-bright)}
   /* ---------- Modals ---------- */
   .modal-back{
     position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:2000;
@@ -186,13 +207,12 @@
   .pop-cup .ph{width:42px;height:42px;border-radius:8px;background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:1.2rem}
   .pop-cup:hover{color:var(--green-bright)}
   #toast{
-    position:fixed; bottom:calc(96px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:3000;
+    position:fixed; bottom:calc(88px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:3000;
     background:var(--green-dark); border:1px solid var(--green); color:#fff;
     padding:10px 20px; border-radius:999px; font-size:.88rem; display:none;
   }
   @media (max-width:640px){
-    #map{height:42vh}
-    #list{grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); padding:14px 14px 100px}
+    #list{grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); padding:14px 14px 24px}
     .card .thumb{height:120px}
     .stats{width:100%; margin-left:0}
     .stat{flex:1}
@@ -215,26 +235,33 @@
   </div>
 </header>
 
-<div class="toolbar">
-  <div class="tb-row">
-    <input type="search" id="q" placeholder="Search cups, cities, notes…">
-    <button class="btn btn-ghost" id="btnExport" title="Download a JSON backup (with photos)">⤓<span class="lbl"> Backup</span></button>
-    <button class="btn btn-ghost" id="btnImport" title="Restore / merge from a JSON backup">⤒<span class="lbl"> Import</span></button>
-  </div>
-  <div class="tb-row">
-    <select id="fCountry"><option value="">All countries</option></select>
-    <select id="fSeries"><option value="">All series</option></select>
-  </div>
-  <input type="file" id="importFile" accept="application/json" hidden>
-</div>
-
 <main>
-  <div id="map"></div>
-  <div class="legend-strip" id="legend"></div>
-  <div id="list"></div>
+  <section id="viewMap" class="view active">
+    <div id="map"></div>
+    <div class="legend-strip" id="legend"></div>
+  </section>
+  <section id="viewCups" class="view">
+    <div class="toolbar">
+      <div class="tb-row">
+        <input type="search" id="q" placeholder="Search cups, cities, notes…">
+        <button class="btn btn-ghost" id="btnExport" title="Download a JSON backup (with photos)">⤓<span class="lbl"> Backup</span></button>
+        <button class="btn btn-ghost" id="btnImport" title="Restore / merge from a JSON backup">⤒<span class="lbl"> Import</span></button>
+      </div>
+      <div class="tb-row">
+        <select id="fCountry"><option value="">All countries</option></select>
+        <select id="fSeries"><option value="">All series</option></select>
+      </div>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+    <div id="list"></div>
+  </section>
 </main>
 
-<button class="fab" id="btnAdd" title="Add a cup">+</button>
+<nav class="tabbar">
+  <button class="tab active" id="tabMap"><span class="ico">🗺️</span><span>Map</span></button>
+  <button class="tab-add" id="btnAdd" title="Add a cup">+</button>
+  <button class="tab" id="tabCups"><span class="ico">☕</span><span>Cups</span></button>
+</nav>
 <div id="toast"></div>
 
 <!-- Add / Edit modal -->
@@ -345,6 +372,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 'use strict';
 /* ============================================================
@@ -538,7 +566,9 @@ function render(){
   list.innerHTML="";
   if(!view.length){
     list.innerHTML=`<div class="empty"><div class="big">☕🌍</div>
-      ${cups.length? "No cups match the current filters.":"The shared collection is empty.<br>Hit the <b>+</b> button to log the first Starbucks cup!"}</div>`;
+      ${cups.length? `No cups match the current filters.<br><br><button class="btn btn-ghost btn-sm" id="btnClearF">✕ Clear filters</button>`:"The shared collection is empty.<br>Hit the <b>+</b> button to log the first Starbucks cup!"}</div>`;
+    const cf=document.getElementById("btnClearF");
+    if(cf) cf.addEventListener("click",()=>{ $("q").value=""; $("fCountry").value=""; $("fSeries").value=""; render(); });
   }
   for(const cup of view){
     const card=document.createElement("div");
@@ -551,7 +581,7 @@ function render(){
       <div class="body">
         <h3>${esc(cup.name)}</h3>
         <div class="meta"><span>${esc(cup.series||"")}</span><span>${esc(cup.date||"")}</span></div>
-        ${cup.added_by||cup.bought_by?`<div class="meta" style="margin-top:3px"><span>${cup.added_by?"📸 "+esc(cup.added_by):""}</span><span>${cup.bought_by?"🛍 "+esc(cup.bought_by):""}</span></div>`:""}
+        ${cup.added_by||cup.bought_by?`<div class="who">${cup.added_by?`<span class="chip">📸 ${esc(cup.added_by)}</span>`:""}${cup.bought_by?`<span class="chip">🛍 ${esc(cup.bought_by)}</span>`:""}</div>`:""}
       </div>`;
     card.addEventListener("click",()=>openDetail(cup.id));
     list.appendChild(card);
@@ -705,6 +735,16 @@ $("camShot").addEventListener("click",async()=>{
   }
 });
 
+// ================= Tab views =================
+function switchView(v){
+  document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===v));
+  $("tabMap").classList.toggle("active",v==="viewMap");
+  $("tabCups").classList.toggle("active",v==="viewCups");
+  if(v==="viewMap") setTimeout(()=>map.invalidateSize(),60);
+}
+$("tabMap").addEventListener("click",()=>switchView("viewMap"));
+$("tabCups").addEventListener("click",()=>switchView("viewCups"));
+
 // ================= Cup recognition (Gemini via edge function) =================
 async function scanBlob(){
   if(pendingPhoto) return pendingPhoto;
@@ -793,6 +833,7 @@ $("cupForm").addEventListener("submit",async e=>{
     closeModal("formModal");
     toast((editingId?"Cup updated ✔ ":"Cup added ✔ ")+flagEmoji(cup.country));
     render();
+    if(!editingId) switchView("viewCups"); // show the freshly added cup
   }catch(err){
     toast("⚠ Save failed: "+err.message);
   }finally{
@@ -966,6 +1007,31 @@ async function offerMigration(){
     else if(pts.length>1) map.fitBounds(L.latLngBounds(pts).pad(0.3));
   }
   offerMigration();
+  setTimeout(()=>map.invalidateSize(),120); // flex layout settles after first paint
+  // Live updates: any family member's change refreshes everyone's view.
+  try{
+    const rt=window.supabase.createClient(SUPA_URL,SUPA_ANON);
+    let rtTimer=null;
+    rt.channel("cups-live")
+      .on("postgres_changes",{event:"*",schema:"public",table:"cups"},payload=>{
+        clearTimeout(rtTimer);
+        rtTimer=setTimeout(async()=>{
+          const fresh=await loadCups().catch(()=>null);
+          if(!fresh) return;
+          const knownIds=new Set(cups.map(c=>c.id));
+          if(payload.eventType==="UPDATE" && payload.new){
+            const u=fresh.find(c=>c.id===payload.new.id);
+            if(u) u._bust=Date.now(); // photo may have changed remotely
+          }
+          cups=fresh;
+          render();
+          if(payload.eventType==="INSERT" && payload.new && !knownIds.has(payload.new.id)){
+            toast(`☕ ${payload.new.added_by||"Someone"} added "${payload.new.name}"`);
+          }
+        },400);
+      })
+      .subscribe();
+  }catch(_){ /* realtime is a bonus — the app works without it */ }
   if("serviceWorker" in navigator && location.protocol!=="file:"){
     navigator.serviceWorker.register("sw.js").catch(()=>{});
   }
