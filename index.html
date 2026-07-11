@@ -56,6 +56,8 @@
     cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:filter .15s;
   }
   .btn:hover{filter:brightness(1.15)}
+  @keyframes scanPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,168,98,.6)}50%{box-shadow:0 0 0 8px rgba(0,168,98,0)}}
+  #btnScan{animation:scanPulse 1.6s ease-out infinite}
   .btn-primary{background:var(--green); color:#fff}
   .btn-ghost{background:var(--panel-2); color:var(--text); border:1px solid var(--line)}
   .btn-danger{background:var(--danger); color:#fff}
@@ -220,6 +222,21 @@
     <h2><span id="formTitle">Add a cup</span><button class="x" data-close="formModal">×</button></h2>
     <form id="cupForm">
       <div class="field">
+        <label>Photo</label>
+        <div class="photo-row">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnPickPhoto">🖼 Upload image</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnCamera">📷 Take picture</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnScan" style="display:none">✨ Scan cup</button>
+        </div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:6px">Add a photo, then hit <b>✨ Scan cup</b> — the AI fills the details below. Check them and Save.</div>
+        <input type="file" id="photoFile" accept="image/*" hidden>
+        <input type="file" id="photoCapture" accept="image/*" capture="environment" hidden>
+        <div class="photo-preview" id="photoPreview">
+          <img id="photoPreviewImg" alt="cup photo preview">
+          <button type="button" class="btn btn-danger btn-sm rm" id="btnRemovePhoto">✕</button>
+        </div>
+      </div>
+      <div class="field">
         <label>Cup name *</label>
         <input id="fName" required maxlength="80" placeholder='e.g. "You Are Here — Tokyo"'>
       </div>
@@ -238,10 +255,18 @@
         <select id="fSeriesIn">
           <option>You Are Here</option>
           <option>Been There</option>
-          <option>City Mugs</option>
+          <option>Global Icon</option>
+          <option>City Mugs (Skyline)</option>
+          <option>Architecture</option>
+          <option>Relief</option>
+          <option>Discovery</option>
+          <option>Icon Mini / Ornament</option>
           <option>Anniversary</option>
           <option>Holiday / Christmas</option>
+          <option>Sakura / Seasonal</option>
           <option>Siren / Core</option>
+          <option>Reserve</option>
+          <option>Tumbler</option>
           <option>Other</option>
         </select>
       </div>
@@ -252,20 +277,6 @@
       <div class="field">
         <label>Notes</label>
         <textarea id="fNotes" maxlength="500" placeholder="Where you got it, who gave it, condition…"></textarea>
-      </div>
-      <div class="field">
-        <label>Photo</label>
-        <div class="photo-row">
-          <button type="button" class="btn btn-ghost btn-sm" id="btnPickPhoto">🖼 Upload image</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="btnCamera">📷 Take picture</button>
-          <button type="button" class="btn btn-primary btn-sm" id="btnScan" style="display:none">✨ Scan cup</button>
-        </div>
-        <input type="file" id="photoFile" accept="image/*" hidden>
-        <input type="file" id="photoCapture" accept="image/*" capture="environment" hidden>
-        <div class="photo-preview" id="photoPreview">
-          <img id="photoPreviewImg" alt="cup photo preview">
-          <button type="button" class="btn btn-danger btn-sm rm" id="btnRemovePhoto">✕</button>
-        </div>
       </div>
       <div class="field">
         <label>PIN (required to save)</label>

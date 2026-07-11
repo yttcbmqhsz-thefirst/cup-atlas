@@ -11,7 +11,11 @@ const CORS = {
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
-const SERIES = ["You Are Here", "Been There", "City Mugs", "Anniversary", "Holiday / Christmas", "Siren / Core", "Other"];
+const SERIES = [
+  "You Are Here", "Been There", "Global Icon", "City Mugs (Skyline)", "Architecture",
+  "Relief", "Discovery", "Icon Mini / Ornament", "Anniversary", "Holiday / Christmas",
+  "Sakura / Seasonal", "Siren / Core", "Reserve", "Tumbler", "Other",
+];
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64.replace(/^data:[^,]+,/, ""));
