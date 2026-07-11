@@ -65,8 +65,6 @@
     cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:filter .15s;
   }
   .btn:hover{filter:brightness(1.15)}
-  @keyframes scanPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,168,98,.6)}50%{box-shadow:0 0 0 8px rgba(0,168,98,0)}}
-  #btnScan{animation:scanPulse 1.6s ease-out infinite}
   .btn-primary{background:var(--green); color:#fff}
   .btn-ghost{background:var(--panel-2); color:var(--text); border:1px solid var(--line)}
   .btn-danger{background:var(--danger); color:#fff}
@@ -133,7 +131,8 @@
   .tab{
     background:none; border:none; color:var(--muted); cursor:pointer;
     display:flex; flex-direction:column; align-items:center; gap:2px;
-    font-size:.68rem; letter-spacing:.4px; padding:4px 22px; border-radius:12px;
+    font-size:.68rem; letter-spacing:.4px; padding:4px 0; border-radius:12px;
+    flex:1; /* equal halves keep the + button dead-center */
   }
   .tab .ico{font-size:1.35rem; line-height:1}
   .tab.active{color:var(--green-bright)}
@@ -175,17 +174,44 @@
   .combo-item{padding:9px 12px; cursor:pointer; font-size:.9rem; display:flex; gap:8px; align-items:center}
   .combo-item:hover, .combo-item.active{background:rgba(0,168,98,.15)}
   .combo-item .dot{width:9px;height:9px;border-radius:50%;flex:none}
-  /* photo controls */
-  .photo-row{display:flex; gap:9px; flex-wrap:wrap}
-  .photo-preview{
-    margin-top:10px; border-radius:10px; overflow:hidden; border:1px solid var(--line);
-    max-height:220px; display:none; position:relative;
+  /* photo dropzone */
+  .drop{
+    position:relative; border:2px dashed var(--line); border-radius:14px; overflow:hidden;
+    min-height:170px; margin-bottom:14px; cursor:pointer; background:var(--panel-2);
+    display:flex; align-items:center; justify-content:center;
   }
-  .photo-preview img{width:100%; max-height:220px; object-fit:cover; display:block}
-  .photo-preview .rm{
-    position:absolute; top:8px; right:8px;
+  .drop:hover{border-color:var(--green-bright)}
+  .drop-empty{display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--muted); text-align:center; padding:18px}
+  .drop-empty .drop-ico{font-size:2.4rem}
+  .drop-empty small{font-size:.75rem}
+  .drop img{width:100%; max-height:250px; object-fit:cover; display:block}
+  .drop-cam{
+    position:absolute; right:10px; bottom:10px; width:46px; height:46px; border-radius:50%;
+    border:none; background:var(--green); color:#fff; font-size:1.25rem; cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,.4); z-index:6;
   }
-  .form-actions{display:flex; gap:10px; margin-top:18px; justify-content:flex-end}
+  .drop-cam:hover{background:var(--green-bright)}
+  .drop-actions{position:absolute; left:10px; bottom:10px; display:flex; gap:8px; z-index:6}
+  .drop-scan{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(11,61,46,.78); font-weight:600; z-index:5; font-size:1rem;
+  }
+  /* compact 2-column rows */
+  .frow{display:flex; gap:10px}
+  .frow .field{flex:1; min-width:0}
+  /* sticky footer: PIN + actions always reachable */
+  .form-actions{
+    display:flex; gap:10px; align-items:center; justify-content:flex-end;
+    position:sticky; bottom:-22px; z-index:10;
+    background:var(--panel); border-top:1px solid var(--line);
+    margin:16px -22px -22px; padding:12px 22px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .form-actions #fPin{
+    width:112px; flex:none; margin-right:auto;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:10px 12px; font-size:.95rem; outline:none;
+  }
+  .form-actions #fPin:focus{border-color:var(--green-bright)}
   /* camera modal */
   #camVideo{width:100%; border-radius:12px; background:#000; max-height:60vh}
   /* detail modal */
@@ -269,77 +295,81 @@
   <div class="modal">
     <h2><span id="formTitle">Add a cup</span><button class="x" data-close="formModal">×</button></h2>
     <form id="cupForm">
-      <div class="field">
-        <label>Photo</label>
-        <div class="photo-row">
-          <button type="button" class="btn btn-ghost btn-sm" id="btnPickPhoto">🖼 Upload image</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="btnCamera">📷 Take picture</button>
-          <button type="button" class="btn btn-primary btn-sm" id="btnScan" style="display:none">✨ Scan cup</button>
+      <div class="drop" id="dropZone">
+        <div class="drop-empty" id="dropEmpty">
+          <div class="drop-ico">📸</div>
+          <div><b>Tap to add a photo</b></div>
+          <small>the AI reads the cup and fills everything below</small>
         </div>
-        <div style="font-size:.78rem;color:var(--muted);margin-top:6px">Add a photo and the AI <b>scans it automatically</b>, filling the details below — check them and Save. (Re-run anytime with ✨ Scan cup.)</div>
-        <input type="file" id="photoFile" accept="image/*" hidden>
-        <input type="file" id="photoCapture" accept="image/*" capture="environment" hidden>
-        <div class="photo-preview" id="photoPreview">
-          <img id="photoPreviewImg" alt="cup photo preview">
-          <button type="button" class="btn btn-danger btn-sm rm" id="btnRemovePhoto">✕</button>
+        <img id="photoPreviewImg" alt="cup photo" style="display:none">
+        <div class="drop-scan" id="scanOverlay">✨ Reading your cup…</div>
+        <button type="button" class="drop-cam" id="btnCamera" title="Use the camera">📷</button>
+        <div class="drop-actions" id="dropActions" style="display:none">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnScan">✨ Re-scan</button>
+          <button type="button" class="btn btn-danger btn-sm" id="btnRemovePhoto">✕</button>
         </div>
       </div>
+      <input type="file" id="photoFile" accept="image/*" hidden>
+      <input type="file" id="photoCapture" accept="image/*" capture="environment" hidden>
       <div class="field">
         <label>Cup name *</label>
         <input id="fName" required maxlength="80" placeholder='e.g. "You Are Here — Tokyo"'>
       </div>
-      <div class="field combo">
-        <label>Country *</label>
-        <input id="fCountryIn" autocomplete="off" required placeholder="Type to search…">
-        <input type="hidden" id="fCountryCode">
-        <div class="combo-list" id="comboList"></div>
+      <div class="frow">
+        <div class="field combo">
+          <label>Country *</label>
+          <input id="fCountryIn" autocomplete="off" required placeholder="Search…">
+          <input type="hidden" id="fCountryCode">
+          <div class="combo-list" id="comboList"></div>
+        </div>
+        <div class="field">
+          <label>City</label>
+          <input id="fCity" maxlength="60" placeholder="e.g. Tokyo">
+        </div>
       </div>
-      <div class="field">
-        <label>City (optional)</label>
-        <input id="fCity" maxlength="60" placeholder="e.g. Tokyo">
+      <div class="frow">
+        <div class="field">
+          <label>Series</label>
+          <select id="fSeriesIn">
+            <option>You Are Here</option>
+            <option>Been There</option>
+            <option>Global Icon</option>
+            <option>City Mugs (Skyline)</option>
+            <option>Architecture</option>
+            <option>Relief</option>
+            <option>Discovery</option>
+            <option>Icon Mini / Ornament</option>
+            <option>Anniversary</option>
+            <option>Holiday / Christmas</option>
+            <option>Sakura / Seasonal</option>
+            <option>Siren / Core</option>
+            <option>Reserve</option>
+            <option>Tumbler</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Date</label>
+          <input type="date" id="fDate">
+        </div>
       </div>
-      <div class="field">
-        <label>Series</label>
-        <select id="fSeriesIn">
-          <option>You Are Here</option>
-          <option>Been There</option>
-          <option>Global Icon</option>
-          <option>City Mugs (Skyline)</option>
-          <option>Architecture</option>
-          <option>Relief</option>
-          <option>Discovery</option>
-          <option>Icon Mini / Ornament</option>
-          <option>Anniversary</option>
-          <option>Holiday / Christmas</option>
-          <option>Sakura / Seasonal</option>
-          <option>Siren / Core</option>
-          <option>Reserve</option>
-          <option>Tumbler</option>
-          <option>Other</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Date acquired</label>
-        <input type="date" id="fDate">
-      </div>
-      <div class="field">
-        <label>Bought by</label>
-        <select id="fBought">
-          <option value="">— not sure —</option>
-          <option>Eliad</option>
-          <option>Dad</option>
-          <option>Liel</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Notes</label>
-        <textarea id="fNotes" maxlength="500" placeholder="Where you got it, who gave it, condition…"></textarea>
-      </div>
-      <div class="field">
-        <label>Your PIN (identifies who's saving)</label>
-        <input id="fPin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Your personal PIN">
+      <div class="frow">
+        <div class="field">
+          <label>Bought by</label>
+          <select id="fBought">
+            <option value="">— not sure —</option>
+            <option>Eliad</option>
+            <option>Dad</option>
+            <option>Liel</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Notes</label>
+          <input id="fNotes" maxlength="500" placeholder="optional">
+        </div>
       </div>
       <div class="form-actions">
+        <input id="fPin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="🔒 PIN" title="Your personal PIN — it signs the cup as yours">
         <button type="button" class="btn btn-ghost" data-close="formModal">Cancel</button>
         <button type="submit" class="btn btn-primary" id="btnSave">Save cup</button>
       </div>
@@ -507,9 +537,11 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{
   maxZoom:18
 }).addTo(map);
 let markerLayer=L.layerGroup().addTo(map);
+let countryMarkers=new Map(); // country code -> marker, for the legend fly-to
 
 function renderMap(view){
   markerLayer.clearLayers();
+  countryMarkers.clear();
   const byCountry=new Map();
   for(const c of view){
     if(!byCountry.has(c.country)) byCountry.set(c.country,[]);
@@ -525,6 +557,7 @@ function renderMap(view){
     });
     const m=L.marker([info.lat,info.lng],{icon}).addTo(markerLayer);
     m.bindPopup(()=>popupHTML(code,items),{minWidth:200});
+    countryMarkers.set(code,m);
   }
 }
 function popupHTML(code,items){
@@ -595,9 +628,13 @@ function render(){
     const chip=document.createElement("div");
     chip.className="legend-chip";
     chip.innerHTML=`<span class="dot" style="background:${countryColor(code)}"></span>${flagEmoji(code)} ${esc(countryName(code))} <span class="cnt">×${n}</span>`;
-    chip.title="Click: filter list · Double-click: fly to country";
-    chip.addEventListener("click",()=>{ $("fCountry").value=($("fCountry").value===code?"":code); render(); });
-    chip.addEventListener("dblclick",()=>{ const i=CMAP.get(code); if(i) map.flyTo([i.lat,i.lng],5); });
+    chip.title="Fly to this country's cups";
+    chip.addEventListener("click",()=>{
+      const i=CMAP.get(code); if(!i) return;
+      map.flyTo([i.lat,i.lng],5,{duration:.8});
+      const m=countryMarkers.get(code);
+      if(m) setTimeout(()=>m.openPopup(),900);
+    });
     legend.appendChild(chip);
   });
   // filter dropdowns (preserve selection)
@@ -672,13 +709,17 @@ let previewURL=null; // object URL owned by the form preview (cache URLs are man
 function clearPreviewURL(){
   if(previewURL){ URL.revokeObjectURL(previewURL); previewURL=null; }
 }
+function setDropState(url){
+  $("photoPreviewImg").src=url||"";
+  $("photoPreviewImg").style.display=url?"block":"none";
+  $("dropEmpty").style.display=url?"none":"flex";
+  $("dropActions").style.display=url?"flex":"none";
+}
 function setPendingPhoto(blob){
   pendingPhoto=blob; photoRemoved=false;
   clearPreviewURL();
   previewURL=URL.createObjectURL(blob);
-  $("photoPreviewImg").src=previewURL;
-  $("photoPreview").style.display="block";
-  $("btnScan").style.display="inline-flex";
+  setDropState(previewURL);
   // auto-scan: fresh photo + empty name + PIN available → no button hunting needed
   if($("fName").value.trim()==="" && $("fPin").value.trim()!=="") setTimeout(()=>$("btnScan").click(),100);
 }
@@ -689,14 +730,13 @@ async function handlePhotoInput(input){
   try{ setPendingPhoto(await resizeImage(f)); }
   catch(e){ toast("⚠ Couldn't read that image"); }
 }
-$("btnPickPhoto").addEventListener("click",()=>$("photoFile").click());
+$("dropZone").addEventListener("click",e=>{ if(e.target.closest("button")) return; $("photoFile").click(); });
 $("photoFile").addEventListener("change",e=>handlePhotoInput(e.target));
 $("photoCapture").addEventListener("change",e=>handlePhotoInput(e.target));
 $("btnRemovePhoto").addEventListener("click",()=>{
   pendingPhoto=null; photoRemoved=true;
   clearPreviewURL();
-  $("photoPreview").style.display="none"; $("photoPreviewImg").src="";
-  $("btnScan").style.display="none";
+  setDropState(null);
 });
 
 // Camera (getUserMedia on desktop / secure contexts; falls back to capture input)
@@ -758,7 +798,7 @@ $("btnScan").addEventListener("click",async()=>{
   const pin=$("fPin").value.trim();
   if(!pin){ toast("Enter the PIN first"); $("fPin").focus(); return; }
   const b=$("btnScan");
-  b.disabled=true; b.textContent="🔍 Scanning…";
+  b.disabled=true; $("scanOverlay").style.display="flex";
   try{
     const blob=await scanBlob();
     if(!blob){ toast("Add a photo first"); return; }
@@ -772,7 +812,7 @@ $("btnScan").addEventListener("click",async()=>{
   }catch(err){
     toast("⚠ Scan failed: "+err.message);
   }finally{
-    b.disabled=false; b.textContent="✨ Scan cup";
+    b.disabled=false; $("scanOverlay").style.display="none";
   }
 });
 
@@ -795,13 +835,9 @@ function openForm(cup){
   $("fDate").value=cup?(cup.date||""):new Date().toISOString().slice(0,10);
   $("fBought").value=cup?(cup.bought_by||""):"";
   $("fNotes").value=cup?(cup.notes||""):"";
-  const existing=cup?photoURL(cup):null;
-  $("photoPreviewImg").src=existing||"";
-  $("photoPreview").style.display=existing?"block":"none";
-  $("btnScan").style.display=existing?"inline-flex":"none";
+  setDropState(cup?photoURL(cup):null);
   $("fPin").value=getPIN();
   openModal("formModal");
-  setTimeout(()=>$("fName").focus(),50);
 }
 $("cupForm").addEventListener("submit",async e=>{
   e.preventDefault();
