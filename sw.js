@@ -1,5 +1,5 @@
 // Cup Atlas service worker — offline app shell (map tiles stay network-only).
-const CACHE = "cupatlas-v4";
+const CACHE = "cupatlas-v5";
 const ASSETS = [
   "./", "./index.html", "./manifest.json",
   "./icon-180.png", "./icon-192.png", "./icon-512.png",
@@ -38,7 +38,7 @@ self.addEventListener("fetch", e => {
   // Everything else: cache-first, populate cache from network.
   e.respondWith(
     caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      if (res.ok && (url.origin === location.origin || url.hostname === "unpkg.com")) {
+      if (res.ok && (url.origin === location.origin || url.hostname === "unpkg.com" || url.hostname === "cdn.jsdelivr.net")) {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
       }
