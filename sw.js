@@ -1,5 +1,5 @@
 // Cup Atlas service worker — offline app shell (map tiles stay network-only).
-const CACHE = "cupatlas-v1";
+const CACHE = "cupatlas-v2";
 const ASSETS = [
   "./", "./index.html", "./manifest.json",
   "./icon-180.png", "./icon-192.png", "./icon-512.png",

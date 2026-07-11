@@ -258,6 +258,7 @@
         <div class="photo-row">
           <button type="button" class="btn btn-ghost btn-sm" id="btnPickPhoto">🖼 Upload image</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btnCamera">📷 Take picture</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnScan" style="display:none">✨ Scan cup</button>
         </div>
         <input type="file" id="photoFile" accept="image/*" hidden>
         <input type="file" id="photoCapture" accept="image/*" capture="environment" hidden>
@@ -265,6 +266,10 @@
           <img id="photoPreviewImg" alt="cup photo preview">
           <button type="button" class="btn btn-danger btn-sm rm" id="btnRemovePhoto">✕</button>
         </div>
+      </div>
+      <div class="field">
+        <label>PIN (required to save)</label>
+        <input id="fPin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Shared PIN">
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" data-close="formModal">Cancel</button>
@@ -371,51 +376,59 @@ function flagEmoji(code){
 function countryName(code){ const c=CMAP.get(code); return c?c.name:code; }
 function esc(s){ return String(s??"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
 
-// ================= IndexedDB =================
-const DB_NAME="cupatlas", STORE="cups";
-let db=null;
-function openDB(){
-  return new Promise((res,rej)=>{
-    const rq=indexedDB.open(DB_NAME,1);
-    rq.onupgradeneeded=()=>{ rq.result.createObjectStore(STORE,{keyPath:"id"}); };
-    rq.onsuccess=()=>res(rq.result);
-    rq.onerror=()=>rej(rq.error);
+// ================= Shared backend (Supabase) =================
+const SUPA_URL="https://ojgddvozjayoqthmezuq.supabase.co";
+const SUPA_ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qZ2Rkdm96amF5b3F0aG1lenVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3NzczNTYsImV4cCI6MjA5OTM1MzM1Nn0.yuNiFeYracfmTO4W72bbtarlFyjl4nFRgedRE5BuRcg"; // public read-only key (RLS-enforced)
+const API_URL=`${SUPA_URL}/functions/v1/api`;
+const PHOTO_BASE=`${SUPA_URL}/storage/v1/object/public/cups/`;
+const PIN_KEY="cupatlas_pin";
+function getPIN(){ return localStorage.getItem(PIN_KEY)||""; }
+
+async function api(payload){
+  const res=await fetch(API_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json", apikey:SUPA_ANON, Authorization:"Bearer "+SUPA_ANON},
+    body:JSON.stringify(payload)
   });
+  const data=await res.json().catch(()=>({}));
+  if(res.status===401){ localStorage.removeItem(PIN_KEY); throw new Error("wrong PIN"); }
+  if(!res.ok) throw new Error(data.error||("HTTP "+res.status));
+  return data;
 }
-function dbAll(){
-  return new Promise((res,rej)=>{
-    const rq=db.transaction(STORE).objectStore(STORE).getAll();
-    rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>rej(rq.error);
+async function loadCups(){
+  const res=await fetch(`${SUPA_URL}/rest/v1/cups?select=*&order=created_at.desc`,{
+    headers:{apikey:SUPA_ANON, Authorization:"Bearer "+SUPA_ANON}
   });
+  if(!res.ok) throw new Error("could not load the shared collection");
+  return res.json();
 }
-function dbPut(cup){
-  return new Promise((res,rej)=>{
-    const tx=db.transaction(STORE,"readwrite");
-    tx.objectStore(STORE).put(cup);
-    tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
-  });
-}
-function dbDel(id){
-  return new Promise((res,rej)=>{
-    const tx=db.transaction(STORE,"readwrite");
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
+// Legacy on-device store (pre-shared-DB) — read once so old cups can be migrated.
+function legacyCups(){
+  return new Promise(res=>{
+    let settled=false; const done=v=>{ if(!settled){settled=true; res(v);} };
+    try{
+      const rq=indexedDB.open("cupatlas",1);
+      rq.onupgradeneeded=()=>{ try{rq.result.createObjectStore("cups",{keyPath:"id"});}catch(_){} };
+      rq.onsuccess=()=>{
+        try{
+          const g=rq.result.transaction("cups").objectStore("cups").getAll();
+          g.onsuccess=()=>done(g.result||[]); g.onerror=()=>done([]);
+        }catch(_){ done([]); }
+      };
+      rq.onerror=()=>done([]);
+      setTimeout(()=>done([]),3000);
+    }catch(_){ done([]); }
   });
 }
 
 // ================= State =================
-let cups=[];                 // in-memory copy
+let cups=[];                 // in-memory copy of the shared collection
 let editingId=null;          // id being edited (null = new)
-let pendingPhoto=null;       // Blob chosen in the form (undefined = keep existing)
+let pendingPhoto=null;       // Blob chosen in the form
 let photoRemoved=false;
-const urlCache=new Map();    // id -> objectURL
 function photoURL(cup){
-  if(!cup.photo) return null;
-  if(!urlCache.has(cup.id)) urlCache.set(cup.id, URL.createObjectURL(cup.photo));
-  return urlCache.get(cup.id);
-}
-function dropURL(id){
-  if(urlCache.has(id)){ URL.revokeObjectURL(urlCache.get(id)); urlCache.delete(id); }
+  if(!cup.photo_path) return null;
+  return PHOTO_BASE+cup.photo_path+(cup._bust?`?v=${cup._bust}`:"");
 }
 
 // ================= Map =================
@@ -472,7 +485,7 @@ function currentView(){
       if(!hay.includes(q)) return false;
     }
     return true;
-  }).sort((a,b)=>(b.date||"").localeCompare(a.date||"") || b.created-a.created);
+  }).sort((a,b)=>(b.date||"").localeCompare(a.date||"") || (b.created_at||"").localeCompare(a.created_at||""));
 }
 function render(){
   const view=currentView();
@@ -484,7 +497,7 @@ function render(){
   list.innerHTML="";
   if(!view.length){
     list.innerHTML=`<div class="empty"><div class="big">☕🌍</div>
-      ${cups.length? "No cups match the current filters.":"Your collection is empty.<br>Hit the <b>+</b> button to log your first Starbucks cup!"}</div>`;
+      ${cups.length? "No cups match the current filters.":"The shared collection is empty.<br>Hit the <b>+</b> button to log the first Starbucks cup!"}</div>`;
   }
   for(const cup of view){
     const card=document.createElement("div");
@@ -593,6 +606,7 @@ function setPendingPhoto(blob){
   previewURL=URL.createObjectURL(blob);
   $("photoPreviewImg").src=previewURL;
   $("photoPreview").style.display="block";
+  $("btnScan").style.display="inline-flex";
 }
 async function handlePhotoInput(input){
   const f=input.files && input.files[0];
@@ -608,6 +622,7 @@ $("btnRemovePhoto").addEventListener("click",()=>{
   pendingPhoto=null; photoRemoved=true;
   clearPreviewURL();
   $("photoPreview").style.display="none"; $("photoPreviewImg").src="";
+  $("btnScan").style.display="none";
 });
 
 // Camera (getUserMedia on desktop / secure contexts; falls back to capture input)
@@ -646,6 +661,37 @@ $("camShot").addEventListener("click",async()=>{
   }
 });
 
+// ================= Cup recognition (Gemini via edge function) =================
+async function scanBlob(){
+  if(pendingPhoto) return pendingPhoto;
+  if(editingId){
+    const cup=cups.find(c=>c.id===editingId);
+    if(cup && cup.photo_path) return (await fetch(photoURL(cup))).blob();
+  }
+  return null;
+}
+$("btnScan").addEventListener("click",async()=>{
+  const pin=$("fPin").value.trim();
+  if(!pin){ toast("Enter the PIN first"); $("fPin").focus(); return; }
+  const b=$("btnScan");
+  b.disabled=true; b.textContent="🔍 Scanning…";
+  try{
+    const blob=await scanBlob();
+    if(!blob){ toast("Add a photo first"); return; }
+    const g=await api({action:"recognize",pin,photo_b64:await blobToDataURL(blob)});
+    localStorage.setItem(PIN_KEY,pin);
+    if(g.country_code && CMAP.has(g.country_code)) comboPick(g.country_code);
+    if(g.name) $("fName").value=g.name;
+    if(g.city) $("fCity").value=g.city;
+    if(g.series) $("fSeriesIn").value=g.series;
+    toast(`✨ Recognized — ${Math.round((g.confidence||0)*100)}% confident. Check & save!`);
+  }catch(err){
+    toast("⚠ Scan failed: "+err.message);
+  }finally{
+    b.disabled=false; b.textContent="✨ Scan cup";
+  }
+});
+
 // ================= Add / Edit =================
 $("btnAdd").addEventListener("click",()=>openForm(null));
 function openForm(cup){
@@ -667,6 +713,8 @@ function openForm(cup){
   const existing=cup?photoURL(cup):null;
   $("photoPreviewImg").src=existing||"";
   $("photoPreview").style.display=existing?"block":"none";
+  $("btnScan").style.display=existing?"inline-flex":"none";
+  $("fPin").value=getPIN();
   openModal("formModal");
   setTimeout(()=>$("fName").focus(),50);
 }
@@ -674,27 +722,36 @@ $("cupForm").addEventListener("submit",async e=>{
   e.preventDefault();
   const code=comboCode.value;
   if(!code || !CMAP.has(code)){ toast("Pick a country from the list"); comboIn.focus(); return; }
-  const existing=editingId?cups.find(c=>c.id===editingId):null;
-  const cup={
-    id: editingId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random().toString(16).slice(2)),
-    name: $("fName").value.trim(),
-    country: code,
+  const name=$("fName").value.trim();
+  if(!name){ toast("Give the cup a name"); return; }
+  const pin=$("fPin").value.trim();
+  if(!pin){ toast("Enter the PIN to save"); $("fPin").focus(); return; }
+  const payload={action:"save",pin,cup:{
+    id: editingId||undefined,
+    name, country: code,
     city: $("fCity").value.trim(),
     series: $("fSeriesIn").value,
-    date: $("fDate").value,
-    notes: $("fNotes").value.trim(),
-    created: existing?existing.created:Date.now(),
-    photo: photoRemoved?null:(pendingPhoto||(existing?existing.photo:null))
-  };
-  if(!cup.name){ toast("Give the cup a name"); return; }
-  try{ await dbPut(cup); }
-  catch(err){ toast("⚠ Save failed — storage error (out of space?)"); return; }
-  dropURL(cup.id); // photo may have changed
-  clearPreviewURL();
-  if(existing) cups[cups.indexOf(existing)]=cup; else cups.push(cup);
-  closeModal("formModal");
-  toast(existing?"Cup updated ✔":"Cup added ✔ "+flagEmoji(code));
-  render();
+    date: $("fDate").value||null,
+    notes: $("fNotes").value.trim()
+  }};
+  if(pendingPhoto) payload.photo_b64=await blobToDataURL(pendingPhoto);
+  else if(photoRemoved) payload.remove_photo=true;
+  const btn=$("btnSave"); btn.disabled=true; btn.textContent="Saving…";
+  try{
+    const {cup}=await api(payload);
+    localStorage.setItem(PIN_KEY,pin);
+    cup._bust=Date.now(); // photo may have changed — bypass the browser cache
+    const i=cups.findIndex(c=>c.id===cup.id);
+    if(i>=0) cups[i]=cup; else cups.unshift(cup);
+    clearPreviewURL();
+    closeModal("formModal");
+    toast((editingId?"Cup updated ✔ ":"Cup added ✔ ")+flagEmoji(cup.country));
+    render();
+  }catch(err){
+    toast("⚠ Save failed: "+err.message);
+  }finally{
+    btn.disabled=false; btn.textContent="Save cup";
+  }
 });
 
 // ================= Detail =================
@@ -722,10 +779,12 @@ $("dEdit").addEventListener("click",()=>{
 });
 $("dDelete").addEventListener("click",async()=>{
   const cup=cups.find(c=>c.id===detailId); if(!cup) return;
-  if(!confirm(`Delete "${cup.name}"? This can't be undone.`)) return;
-  try{ await dbDel(cup.id); }
-  catch(err){ toast("⚠ Delete failed — try again"); return; }
-  dropURL(cup.id);
+  const pin=getPIN() || (prompt("Enter the PIN to delete:")||"").trim();
+  if(!pin){ toast("PIN required"); return; }
+  if(!confirm(`Delete "${cup.name}" for everyone? This can't be undone.`)) return;
+  try{ await api({action:"delete",pin,id:cup.id}); }
+  catch(err){ toast("⚠ Delete failed: "+err.message); return; }
+  localStorage.setItem(PIN_KEY,pin);
   cups=cups.filter(c=>c.id!==cup.id);
   closeModal("detailModal");
   toast("Cup deleted");
@@ -745,7 +804,11 @@ $("btnExport").addEventListener("click",async()=>{
   try{
     const out=[];
     for(const c of cups){
-      out.push({...c, photo: c.photo? await blobToDataURL(c.photo):null});
+      let photo=null;
+      if(c.photo_path){
+        try{ photo=await blobToDataURL(await (await fetch(photoURL(c))).blob()); }catch(_){}
+      }
+      out.push({...c, photo});
     }
     const blob=new Blob([JSON.stringify({app:"cupatlas",version:1,exported:new Date().toISOString(),cups:out},null,1)],{type:"application/json"});
     const a=document.createElement("a");
@@ -763,30 +826,31 @@ $("importFile").addEventListener("change",async e=>{
   const f=e.target.files && e.target.files[0];
   e.target.value="";
   if(!f) return;
+  const pin=getPIN() || (prompt("Enter the PIN to import:")||"").trim();
+  if(!pin){ toast("PIN required to import"); return; }
   try{
     const data=JSON.parse(await f.text());
     const arr=Array.isArray(data)?data:data.cups;
     if(!Array.isArray(arr)) throw new Error("bad format");
-    let added=0,updated=0;
+    let done=0;
     for(const raw of arr){
-      if(!raw || !raw.id || !raw.name || !CMAP.has(raw.country)) continue;
-      const cup={
-        id:String(raw.id), name:String(raw.name).slice(0,80), country:raw.country,
+      if(!raw || !raw.name || !CMAP.has(raw.country)) continue;
+      const payload={action:"save",pin,cup:{
+        id:(typeof raw.id==="string" && /^[0-9a-f-]{36}$/.test(raw.id))?raw.id:undefined,
+        name:String(raw.name).slice(0,80), country:raw.country,
         city:String(raw.city||"").slice(0,60), series:String(raw.series||"Other").slice(0,40),
-        date:String(raw.date||"").slice(0,10), notes:String(raw.notes||"").slice(0,500),
-        created:Number(raw.created)||Date.now(),
-        photo:(typeof raw.photo==="string" && raw.photo.startsWith("data:"))? await dataURLToBlob(raw.photo)
-              : (raw.photo instanceof Blob? raw.photo : null)
-      };
-      const i=cups.findIndex(c=>c.id===cup.id);
-      await dbPut(cup);
-      dropURL(cup.id);
-      if(i>=0){ cups[i]=cup; updated++; } else { cups.push(cup); added++; }
+        date:/^\d{4}-\d{2}-\d{2}$/.test(String(raw.date||""))?String(raw.date):null,
+        notes:String(raw.notes||"").slice(0,500)
+      }};
+      if(typeof raw.photo==="string" && raw.photo.startsWith("data:")) payload.photo_b64=raw.photo;
+      await api(payload);
+      done++;
     }
-    toast(`Import done — ${added} added, ${updated} updated`);
-    render();
+    localStorage.setItem(PIN_KEY,pin);
+    toast(`Import done — ${done} cups uploaded`);
+    cups=await loadCups(); render();
   }catch(err){
-    toast("⚠ Import failed — not a Cup Atlas backup?");
+    toast("⚠ Import failed: "+err.message);
   }
 });
 
@@ -796,15 +860,55 @@ $("importFile").addEventListener("change",async e=>{
   $(id).addEventListener("change",render); // older Safari doesn't fire "input" on <select>
 });
 
+// ================= One-time migration of pre-shared on-device cups =================
+async function offerMigration(){
+  if(localStorage.getItem("cupatlas_migrated")) return;
+  const old=await legacyCups();
+  if(!old.length){ localStorage.setItem("cupatlas_migrated","none"); return; }
+  const bar=document.createElement("div");
+  bar.style.cssText="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 20px;background:var(--green-dark);border-bottom:1px solid var(--line);font-size:.9rem";
+  bar.innerHTML=`<span>📦 Found <b>${old.length}</b> cup(s) saved on this device from before the shared collection.</span>
+    <input id="migPin" type="password" inputmode="numeric" placeholder="PIN" style="width:90px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 10px">
+    <button class="btn btn-primary btn-sm" id="migGo">Upload them</button>
+    <button class="btn btn-ghost btn-sm" id="migSkip">Dismiss</button>`;
+  document.querySelector(".toolbar").after(bar);
+  bar.querySelector("#migPin").value=getPIN();
+  bar.querySelector("#migSkip").addEventListener("click",()=>{ localStorage.setItem("cupatlas_migrated","skipped"); bar.remove(); });
+  bar.querySelector("#migGo").addEventListener("click",async()=>{
+    const pin=bar.querySelector("#migPin").value.trim();
+    if(!pin){ toast("Enter the PIN"); return; }
+    const go=bar.querySelector("#migGo"); go.disabled=true;
+    let ok=0;
+    try{
+      for(const c of old){
+        go.textContent=`Uploading ${ok+1}/${old.length}…`;
+        const payload={action:"save",pin,cup:{name:c.name,country:c.country,city:c.city||"",series:c.series||"Other",date:c.date||null,notes:c.notes||""}};
+        if(c.photo instanceof Blob) payload.photo_b64=await blobToDataURL(c.photo);
+        await api(payload);
+        ok++;
+      }
+      localStorage.setItem(PIN_KEY,pin);
+      localStorage.setItem("cupatlas_migrated","yes");
+      indexedDB.deleteDatabase("cupatlas");
+      bar.remove();
+      toast(`Uploaded ${ok} cups to the shared collection ✔`);
+      cups=await loadCups(); render();
+    }catch(err){
+      go.disabled=false; go.textContent="Upload them";
+      toast(`⚠ Stopped after ${ok}: ${err.message}`);
+    }
+  });
+}
+
 // ================= Boot =================
 (async function(){
-  try{ db=await openDB(); }
-  catch(e){
-    document.body.innerHTML=`<div style="padding:40px;font-family:sans-serif">
-      <h2>Storage unavailable</h2><p>This browser blocked IndexedDB (private mode?). Cup Atlas needs it to save your collection.</p></div>`;
+  try{
+    cups=await loadCups();
+  }catch(e){
+    $("list").innerHTML=`<div class="empty"><div class="big">📡</div>
+      Couldn't reach the shared collection.<br>Check your internet connection and refresh.</div>`;
     return;
   }
-  cups=await dbAll();
   render();
   if(cups.length){
     // fit map to the collection on load
@@ -812,6 +916,7 @@ $("importFile").addEventListener("change",async e=>{
     if(pts.length===1) map.setView(pts[0],4);
     else if(pts.length>1) map.fitBounds(L.latLngBounds(pts).pad(0.3));
   }
+  offerMigration();
   if("serviceWorker" in navigator && location.protocol!=="file:"){
     navigator.serviceWorker.register("sw.js").catch(()=>{});
   }
