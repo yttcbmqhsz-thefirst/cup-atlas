@@ -1,5 +1,5 @@
 // Cup Atlas service worker — offline app shell (map tiles stay network-only).
-const CACHE = "cupatlas-v2";
+const CACHE = "cupatlas-v3";
 const ASSETS = [
   "./", "./index.html", "./manifest.json",
   "./icon-180.png", "./icon-192.png", "./icon-512.png",
@@ -28,9 +28,10 @@ self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (url.hostname.endsWith("cartocdn.com")) return; // tiles: let the browser handle them
 
-  // App navigations: network-first so updates land, cached shell as offline fallback.
+  // App navigations: revalidate with the server (bypass the 10-min GitHub Pages
+  // HTTP cache) so updates land immediately; cached shell as offline fallback.
   if (e.request.mode === "navigate") {
-    e.respondWith(fetch(e.request).catch(() => caches.match("./index.html")));
+    e.respondWith(fetch(e.request, { cache: "no-cache" }).catch(() => caches.match("./index.html")));
     return;
   }
 

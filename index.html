@@ -228,7 +228,7 @@
           <button type="button" class="btn btn-ghost btn-sm" id="btnCamera">📷 Take picture</button>
           <button type="button" class="btn btn-primary btn-sm" id="btnScan" style="display:none">✨ Scan cup</button>
         </div>
-        <div style="font-size:.78rem;color:var(--muted);margin-top:6px">Add a photo, then hit <b>✨ Scan cup</b> — the AI fills the details below. Check them and Save.</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:6px">Add a photo and the AI <b>scans it automatically</b>, filling the details below — check them and Save. (Re-run anytime with ✨ Scan cup.)</div>
         <input type="file" id="photoFile" accept="image/*" hidden>
         <input type="file" id="photoCapture" accept="image/*" capture="environment" hidden>
         <div class="photo-preview" id="photoPreview">
@@ -618,6 +618,8 @@ function setPendingPhoto(blob){
   $("photoPreviewImg").src=previewURL;
   $("photoPreview").style.display="block";
   $("btnScan").style.display="inline-flex";
+  // auto-scan: fresh photo + empty name + PIN available → no button hunting needed
+  if($("fName").value.trim()==="" && $("fPin").value.trim()!=="") setTimeout(()=>$("btnScan").click(),100);
 }
 async function handlePhotoInput(input){
   const f=input.files && input.files[0];
