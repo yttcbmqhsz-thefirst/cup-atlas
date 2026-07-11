@@ -43,6 +43,15 @@
   }
   .stat b{display:block; font-size:1.15rem; color:var(--green-bright)}
   .stat span{font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.6px}
+  .progress-wrap{width:100%; display:flex; flex-direction:column; gap:5px}
+  .progress-label{font-size:.72rem; color:var(--muted); display:flex; justify-content:space-between}
+  .progress-label #progPct{color:var(--green-bright); font-weight:700}
+  .progress-track{height:6px; border-radius:999px; background:rgba(255,255,255,.09); overflow:hidden}
+  .progress-fill{
+    height:100%; border-radius:999px; width:0%;
+    background:linear-gradient(90deg,var(--green),var(--green-bright));
+    transition:width .9s cubic-bezier(.2,.8,.2,1);
+  }
   /* ---------- Toolbar ---------- */
   .toolbar{
     display:flex; flex-direction:column; gap:8px;
@@ -258,6 +267,10 @@
   <div class="stats">
     <div class="stat"><b id="statCups">0</b><span>Cups</span></div>
     <div class="stat"><b id="statCountries">0</b><span>Countries</span></div>
+  </div>
+  <div class="progress-wrap">
+    <div class="progress-label"><span id="progText">🌍 …</span><span id="progPct"></span></div>
+    <div class="progress-track"><div class="progress-fill" id="progFill"></div></div>
   </div>
 </header>
 
@@ -593,7 +606,14 @@ function render(){
   const view=currentView();
   // stats (always on full set)
   $("statCups").textContent=cups.length;
-  $("statCountries").textContent=new Set(cups.map(c=>c.country)).size;
+  const nCountries=new Set(cups.map(c=>c.country)).size;
+  $("statCountries").textContent=nCountries;
+  // countries-conquered progress (Starbucks operates in ~88 markets worldwide)
+  const MARKETS=88;
+  const pct=Math.min(100,Math.round(nCountries/MARKETS*100));
+  $("progText").textContent=`🌍 Conquered ${nCountries} of ${MARKETS} Starbucks countries`;
+  $("progPct").textContent=nCountries?`${pct}%`:"";
+  $("progFill").style.width=(nCountries?Math.max(pct,2):0)+"%";
   // list
   const list=$("list");
   list.innerHTML="";
