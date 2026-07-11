@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cup Atlas ☕ — Starbucks Collection</title>
+<meta name="theme-color" content="#0e1512">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cup Atlas">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --green:#00704A; --green-bright:#00a862; --green-dark:#0b3d2e;
+    --bg:#0e1512; --panel:#16201b; --panel-2:#1d2a23; --line:#2a3a31;
+    --text:#e8f0ec; --muted:#93a89d; --danger:#e05d5d;
+    --radius:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text);
+  }
+  /* ---------- Header ---------- */
+  header{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:14px 20px; background:linear-gradient(135deg,var(--green-dark),#123c2b 60%,#0e1512);
+    border-bottom:1px solid var(--line); position:sticky; top:0; z-index:1000;
+  }
+  header h1{font-size:1.25rem; letter-spacing:.3px; display:flex; align-items:center; gap:8px}
+  header h1 .siren{font-size:1.5rem}
+  .stats{display:flex; gap:10px; margin-left:auto}
+  .stat{
+    background:rgba(255,255,255,.07); border:1px solid var(--line); border-radius:10px;
+    padding:6px 14px; text-align:center; min-width:84px;
+  }
+  .stat b{display:block; font-size:1.15rem; color:var(--green-bright)}
+  .stat span{font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.6px}
+  /* ---------- Toolbar ---------- */
+  .toolbar{
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  .toolbar input[type=search], .toolbar select{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:9px 12px; font-size:.9rem; outline:none;
+  }
+  .toolbar input[type=search]{flex:1; min-width:160px}
+  .toolbar input[type=search]:focus, .toolbar select:focus{border-color:var(--green-bright)}
+  .btn{
+    border:none; border-radius:10px; padding:10px 16px; font-size:.9rem; font-weight:600;
+    cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:filter .15s;
+  }
+  .btn:hover{filter:brightness(1.15)}
+  .btn-primary{background:var(--green); color:#fff}
+  .btn-ghost{background:var(--panel-2); color:var(--text); border:1px solid var(--line)}
+  .btn-danger{background:var(--danger); color:#fff}
+  .btn-sm{padding:6px 11px; font-size:.8rem; border-radius:8px}
+  /* ---------- Layout ---------- */
+  main{display:flex; flex-direction:column}
+  #map{height:52vh; min-height:320px; background:#0a100d}
+  .leaflet-container{font:inherit}
+  .legend-strip{
+    display:flex; gap:8px; overflow-x:auto; padding:10px 20px;
+    background:var(--panel); border-bottom:1px solid var(--line); scrollbar-width:thin;
+  }
+  .legend-chip{
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap; cursor:pointer;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:999px;
+    padding:5px 12px; font-size:.8rem; color:var(--text);
+  }
+  .legend-chip:hover{border-color:var(--green-bright)}
+  .legend-chip .dot{width:10px; height:10px; border-radius:50%; flex:none}
+  .legend-chip .cnt{color:var(--muted)}
+  /* ---------- Cup list ---------- */
+  #list{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+    gap:14px; padding:18px 20px 90px;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; cursor:pointer; transition:transform .12s, border-color .12s;
+    display:flex; flex-direction:column;
+  }
+  .card:hover{transform:translateY(-2px); border-color:var(--green-bright)}
+  .card .thumb{
+    height:150px; background:var(--panel-2); display:flex; align-items:center;
+    justify-content:center; font-size:3rem; overflow:hidden; position:relative;
+  }
+  .card .thumb img{width:100%; height:100%; object-fit:cover}
+  .card .thumb .country-tag{
+    position:absolute; top:8px; left:8px; font-size:.72rem; font-weight:700;
+    padding:3px 9px; border-radius:999px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.5);
+  }
+  .card .body{padding:11px 13px 13px}
+  .card .body h3{font-size:.95rem; margin-bottom:4px}
+  .card .meta{font-size:.78rem; color:var(--muted); display:flex; justify-content:space-between; gap:6px}
+  .empty{
+    grid-column:1/-1; text-align:center; color:var(--muted); padding:50px 20px; line-height:1.7;
+  }
+  .empty .big{font-size:3rem}
+  /* ---------- FAB ---------- */
+  .fab{
+    position:fixed; right:22px; bottom:calc(22px + env(safe-area-inset-bottom)); z-index:1100;
+    width:60px; height:60px; border-radius:50%; border:none; cursor:pointer;
+    background:var(--green); color:#fff; font-size:2rem; line-height:1;
+    box-shadow:0 6px 18px rgba(0,0,0,.45);
+  }
+  .fab:hover{background:var(--green-bright)}
+  /* ---------- Modals ---------- */
+  .modal-back{
+    position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:2000;
+    display:none; align-items:flex-start; justify-content:center; overflow-y:auto; padding:5vh 14px 40px;
+  }
+  .modal-back.open{display:flex}
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    width:100%; max-width:480px; padding:22px;
+  }
+  .modal h2{font-size:1.1rem; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between}
+  .modal h2 .x{cursor:pointer; color:var(--muted); font-size:1.4rem; line-height:1; background:none; border:none}
+  .field{margin-bottom:13px}
+  .field label{display:block; font-size:.78rem; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:.5px}
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:10px 12px; font-size:.95rem; outline:none; font-family:inherit;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{border-color:var(--green-bright)}
+  .field textarea{resize:vertical; min-height:64px}
+  /* searchable country combo */
+  .combo{position:relative}
+  .combo-list{
+    position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:50;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    max-height:210px; overflow-y:auto; display:none;
+  }
+  .combo-list.open{display:block}
+  .combo-item{padding:9px 12px; cursor:pointer; font-size:.9rem; display:flex; gap:8px; align-items:center}
+  .combo-item:hover, .combo-item.active{background:rgba(0,168,98,.15)}
+  .combo-item .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  /* photo controls */
+  .photo-row{display:flex; gap:9px; flex-wrap:wrap}
+  .photo-preview{
+    margin-top:10px; border-radius:10px; overflow:hidden; border:1px solid var(--line);
+    max-height:220px; display:none; position:relative;
+  }
+  .photo-preview img{width:100%; max-height:220px; object-fit:cover; display:block}
+  .photo-preview .rm{
+    position:absolute; top:8px; right:8px;
+  }
+  .form-actions{display:flex; gap:10px; margin-top:18px; justify-content:flex-end}
+  /* camera modal */
+  #camVideo{width:100%; border-radius:12px; background:#000; max-height:60vh}
+  /* detail modal */
+  .detail-photo{width:100%; border-radius:12px; margin-bottom:14px; max-height:52vh; object-fit:contain; background:var(--panel-2)}
+  .detail-rows{font-size:.92rem; line-height:2}
+  .detail-rows b{color:var(--muted); font-weight:600; margin-right:6px}
+  /* map pin */
+  .pin{
+    display:flex; align-items:center; justify-content:center;
+    border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+    border:2px solid rgba(255,255,255,.85); box-shadow:0 2px 6px rgba(0,0,0,.5);
+    color:#fff; font-weight:700; font-size:.72rem;
+  }
+  .pin span{transform:rotate(45deg)}
+  .leaflet-popup-content-wrapper{background:var(--panel); color:var(--text); border-radius:12px}
+  .leaflet-popup-tip{background:var(--panel)}
+  .pop-cup{display:flex; gap:9px; align-items:center; padding:5px 0; cursor:pointer}
+  .pop-cup img{width:42px; height:42px; object-fit:cover; border-radius:8px}
+  .pop-cup .ph{width:42px;height:42px;border-radius:8px;background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+  .pop-cup:hover{color:var(--green-bright)}
+  #toast{
+    position:fixed; bottom:calc(96px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:3000;
+    background:var(--green-dark); border:1px solid var(--green); color:#fff;
+    padding:10px 20px; border-radius:999px; font-size:.88rem; display:none;
+  }
+  @media (max-width:640px){
+    #map{height:42vh}
+    #list{grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); padding:14px 14px 90px}
+    .card .thumb{height:120px}
+    .stats{width:100%; margin-left:0}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="siren">☕</span> Cup Atlas <small style="color:var(--muted);font-weight:400">· Starbucks collection</small></h1>
+  <div class="stats">
+    <div class="stat"><b id="statCups">0</b><span>Cups</span></div>
+    <div class="stat"><b id="statCountries">0</b><span>Countries</span></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <input type="search" id="q" placeholder="Search cups, cities, notes…">
+  <select id="fCountry"><option value="">All countries</option></select>
+  <select id="fSeries"><option value="">All series</option></select>
+  <button class="btn btn-ghost" id="btnExport" title="Download a JSON backup (with photos)">⬇ Backup</button>
+  <button class="btn btn-ghost" id="btnImport" title="Restore / merge from a JSON backup">⬆ Import</button>
+  <input type="file" id="importFile" accept="application/json" hidden>
+</div>
+
+<main>
+  <div id="map"></div>
+  <div class="legend-strip" id="legend"></div>
+  <div id="list"></div>
+</main>
+
+<button class="fab" id="btnAdd" title="Add a cup">+</button>
+<div id="toast"></div>
+
+<!-- Add / Edit modal -->
+<div class="modal-back" id="formModal">
+  <div class="modal">
+    <h2><span id="formTitle">Add a cup</span><button class="x" data-close="formModal">×</button></h2>
+    <form id="cupForm">
+      <div class="field">
+        <label>Cup name *</label>
+        <input id="fName" required maxlength="80" placeholder='e.g. "You Are Here — Tokyo"'>
+      </div>
+      <div class="field combo">
+        <label>Country *</label>
+        <input id="fCountryIn" autocomplete="off" required placeholder="Type to search…">
+        <input type="hidden" id="fCountryCode">
+        <div class="combo-list" id="comboList"></div>
+      </div>
+      <div class="field">
+        <label>City (optional)</label>
+        <input id="fCity" maxlength="60" placeholder="e.g. Tokyo">
+      </div>
+      <div class="field">
+        <label>Series</label>
+        <select id="fSeriesIn">
+          <option>You Are Here</option>
+          <option>Been There</option>
+          <option>City Mugs</option>
+          <option>Anniversary</option>
+          <option>Holiday / Christmas</option>
+          <option>Siren / Core</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Date acquired</label>
+        <input type="date" id="fDate">
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="fNotes" maxlength="500" placeholder="Where you got it, who gave it, condition…"></textarea>
+      </div>
+      <div class="field">
+        <label>Photo</label>
+        <div class="photo-row">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnPickPhoto">🖼 Upload image</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnCamera">📷 Take picture</button>
+        </div>
+        <input type="file" id="photoFile" accept="image/*" hidden>
+        <input type="file" id="photoCapture" accept="image/*" capture="environment" hidden>
+        <div class="photo-preview" id="photoPreview">
+          <img id="photoPreviewImg" alt="cup photo preview">
+          <button type="button" class="btn btn-danger btn-sm rm" id="btnRemovePhoto">✕</button>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="formModal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSave">Save cup</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Camera modal -->
+<div class="modal-back" id="camModal">
+  <div class="modal">
+    <h2>Take a picture <button class="x" id="camClose">×</button></h2>
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" id="camShot">📸 Capture</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal-back" id="detailModal">
+  <div class="modal">
+    <h2><span id="dTitle"></span><button class="x" data-close="detailModal">×</button></h2>
+    <img class="detail-photo" id="dPhoto" alt="cup photo" style="display:none">
+    <div class="detail-rows" id="dRows"></div>
+    <div class="form-actions">
+      <button class="btn btn-danger" id="dDelete">Delete</button>
+      <button class="btn btn-primary" id="dEdit">Edit</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+/* ============================================================
+   Cup Atlas — single-file Starbucks cup collection tracker.
+   Storage: IndexedDB (metadata + photo Blobs). No server needed.
+   ============================================================ */
+
+// ---- Countries: [ISO2, name, lat, lng] (approx. centroids) ----
+const COUNTRIES = [
+["AF","Afghanistan",33.9,67.7],["AL","Albania",41.2,20.2],["DZ","Algeria",28,1.7],["AD","Andorra",42.5,1.5],
+["AO","Angola",-11.2,17.9],["AR","Argentina",-38.4,-63.6],["AM","Armenia",40.1,45],["AU","Australia",-25.3,133.8],
+["AT","Austria",47.5,14.6],["AZ","Azerbaijan",40.1,47.6],["BS","Bahamas",25,-77.4],["BH","Bahrain",26,50.5],
+["BD","Bangladesh",23.7,90.4],["BB","Barbados",13.2,-59.5],["BY","Belarus",53.7,27.9],["BE","Belgium",50.5,4.5],
+["BZ","Belize",17.2,-88.5],["BJ","Benin",9.3,2.3],["BT","Bhutan",27.5,90.4],["BO","Bolivia",-16.3,-63.6],
+["BA","Bosnia and Herzegovina",43.9,17.7],["BW","Botswana",-22.3,24.7],["BR","Brazil",-14.2,-51.9],["BN","Brunei",4.5,114.7],
+["BG","Bulgaria",42.7,25.5],["BF","Burkina Faso",12.2,-1.6],["BI","Burundi",-3.4,29.9],["KH","Cambodia",12.6,105],
+["CM","Cameroon",7.4,12.4],["CA","Canada",56.1,-106.3],["CV","Cape Verde",16,-24],["CF","Central African Republic",6.6,20.9],
+["TD","Chad",15.5,18.7],["CL","Chile",-35.7,-71.5],["CN","China",35.9,104.2],["CO","Colombia",4.6,-74.3],
+["KM","Comoros",-11.9,43.9],["CG","Congo",-0.2,15.8],["CD","DR Congo",-4,21.8],["CR","Costa Rica",9.7,-83.8],
+["CI","Ivory Coast",7.5,-5.5],["HR","Croatia",45.1,15.2],["CU","Cuba",21.5,-77.8],["CY","Cyprus",35.1,33.4],
+["CZ","Czechia",49.8,15.5],["DK","Denmark",56.3,9.5],["DJ","Djibouti",11.8,42.6],["DM","Dominica",15.4,-61.4],
+["DO","Dominican Republic",18.7,-70.2],["EC","Ecuador",-1.8,-78.2],["EG","Egypt",26.8,30.8],["SV","El Salvador",13.8,-88.9],
+["GQ","Equatorial Guinea",1.7,10.3],["ER","Eritrea",15.2,39.8],["EE","Estonia",58.6,25],["SZ","Eswatini",-26.5,31.5],
+["ET","Ethiopia",9.1,40.5],["FJ","Fiji",-17.7,178],["FI","Finland",61.9,25.7],["FR","France",46.2,2.2],
+["GA","Gabon",-0.8,11.6],["GM","Gambia",13.4,-15.3],["GE","Georgia",42.3,43.4],["DE","Germany",51.2,10.5],
+["GH","Ghana",7.9,-1],["GR","Greece",39.1,21.8],["GL","Greenland",71.7,-42.6],["GD","Grenada",12.1,-61.7],
+["GT","Guatemala",15.8,-90.2],["GN","Guinea",9.9,-9.7],["GW","Guinea-Bissau",11.8,-15.2],["GY","Guyana",4.9,-58.9],
+["HT","Haiti",19,-72.3],["HN","Honduras",15.2,-86.2],["HK","Hong Kong",22.3,114.2],["HU","Hungary",47.2,19.5],
+["IS","Iceland",64.9,-19],["IN","India",20.6,79],["ID","Indonesia",-0.8,113.9],["IR","Iran",32.4,53.7],
+["IQ","Iraq",33.2,43.7],["IE","Ireland",53.4,-8.2],["IL","Israel",31.05,34.85],["IT","Italy",41.9,12.6],
+["JM","Jamaica",18.1,-77.3],["JP","Japan",36.2,138.3],["JO","Jordan",30.6,36.2],["KZ","Kazakhstan",48,66.9],
+["KE","Kenya",-0.02,37.9],["KW","Kuwait",29.3,47.5],["KG","Kyrgyzstan",41.2,74.8],["LA","Laos",19.9,102.5],
+["LV","Latvia",56.9,24.6],["LB","Lebanon",33.9,35.9],["LS","Lesotho",-29.6,28.2],["LR","Liberia",6.4,-9.4],
+["LY","Libya",26.3,17.2],["LI","Liechtenstein",47.2,9.6],["LT","Lithuania",55.2,23.9],["LU","Luxembourg",49.8,6.1],
+["MO","Macau",22.2,113.5],["MG","Madagascar",-18.8,47],["MW","Malawi",-13.3,34.3],["MY","Malaysia",4.2,102],
+["MV","Maldives",3.2,73.2],["ML","Mali",17.6,-4],["MT","Malta",35.9,14.4],["MR","Mauritania",21,-10.9],
+["MU","Mauritius",-20.3,57.6],["MX","Mexico",23.6,-102.6],["MD","Moldova",47.4,28.4],["MC","Monaco",43.7,7.4],
+["MN","Mongolia",46.9,103.8],["ME","Montenegro",42.7,19.4],["MA","Morocco",31.8,-7.1],["MZ","Mozambique",-18.7,35.5],
+["MM","Myanmar",21.9,96],["NA","Namibia",-22.9,18.5],["NP","Nepal",28.4,84.1],["NL","Netherlands",52.1,5.3],
+["NZ","New Zealand",-40.9,174.9],["NI","Nicaragua",12.9,-85.2],["NE","Niger",17.6,8.1],["NG","Nigeria",9.1,8.7],
+["KP","North Korea",40.3,127.5],["MK","North Macedonia",41.6,21.7],["NO","Norway",60.5,8.5],["OM","Oman",21.5,55.9],
+["PK","Pakistan",30.4,69.3],["PS","Palestine",31.9,35.2],["PA","Panama",8.5,-80.8],["PG","Papua New Guinea",-6.3,143.9],
+["PY","Paraguay",-23.4,-58.4],["PE","Peru",-9.2,-75],["PH","Philippines",12.9,121.8],["PL","Poland",51.9,19.1],
+["PT","Portugal",39.4,-8.2],["PR","Puerto Rico",18.2,-66.5],["QA","Qatar",25.4,51.2],["RO","Romania",45.9,25],
+["RU","Russia",61.5,105.3],["RW","Rwanda",-1.9,29.9],["SA","Saudi Arabia",23.9,45.1],["SN","Senegal",14.5,-14.5],
+["RS","Serbia",44,21],["SC","Seychelles",-4.7,55.5],["SL","Sierra Leone",8.5,-11.8],["SG","Singapore",1.35,103.8],
+["SK","Slovakia",48.7,19.7],["SI","Slovenia",46.2,15],["SO","Somalia",5.2,46.2],["ZA","South Africa",-30.6,22.9],
+["KR","South Korea",35.9,127.8],["SS","South Sudan",6.9,31.3],["ES","Spain",40.5,-3.7],["LK","Sri Lanka",7.9,80.8],
+["SD","Sudan",12.9,30.2],["SR","Suriname",3.9,-56],["SE","Sweden",60.1,18.6],["CH","Switzerland",46.8,8.2],
+["SY","Syria",34.8,39],["TW","Taiwan",23.7,121],["TJ","Tajikistan",38.9,71.3],["TZ","Tanzania",-6.4,34.9],
+["TH","Thailand",15.9,101],["TL","Timor-Leste",-8.9,125.7],["TG","Togo",8.6,0.8],["TT","Trinidad and Tobago",10.7,-61.2],
+["TN","Tunisia",33.9,9.5],["TR","Turkey",39,35.2],["TM","Turkmenistan",39,59.6],["UG","Uganda",1.4,32.3],
+["UA","Ukraine",48.4,31.2],["AE","United Arab Emirates",23.4,53.8],["GB","United Kingdom",55.4,-3.4],
+["US","United States",39.8,-98.6],["UY","Uruguay",-32.5,-55.8],["UZ","Uzbekistan",41.4,64.6],["VU","Vanuatu",-15.4,166.9],
+["VE","Venezuela",6.4,-66.6],["VN","Vietnam",14.1,108.3],["YE","Yemen",15.6,48.5],["ZM","Zambia",-13.1,27.8],
+["ZW","Zimbabwe",-19,29.2]
+];
+const CMAP = new Map(COUNTRIES.map((c,i)=>[c[0],{code:c[0],name:c[1],lat:c[2],lng:c[3],idx:i}]));
+
+function countryColor(code){
+  const c = CMAP.get(code);
+  const hue = ((c ? c.idx : 0) * 137.508) % 360;
+  return `hsl(${hue.toFixed(0)},65%,48%)`;
+}
+function flagEmoji(code){
+  if(!code || code.length!==2) return "🏳️";
+  const A = 0x1F1E6;
+  return String.fromCodePoint(A + code.charCodeAt(0)-65, A + code.charCodeAt(1)-65);
+}
+function countryName(code){ const c=CMAP.get(code); return c?c.name:code; }
+function esc(s){ return String(s??"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+
+// ================= IndexedDB =================
+const DB_NAME="cupatlas", STORE="cups";
+let db=null;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const rq=indexedDB.open(DB_NAME,1);
+    rq.onupgradeneeded=()=>{ rq.result.createObjectStore(STORE,{keyPath:"id"}); };
+    rq.onsuccess=()=>res(rq.result);
+    rq.onerror=()=>rej(rq.error);
+  });
+}
+function dbAll(){
+  return new Promise((res,rej)=>{
+    const rq=db.transaction(STORE).objectStore(STORE).getAll();
+    rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>rej(rq.error);
+  });
+}
+function dbPut(cup){
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(STORE,"readwrite");
+    tx.objectStore(STORE).put(cup);
+    tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
+  });
+}
+function dbDel(id){
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(STORE,"readwrite");
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
+  });
+}
+
+// ================= State =================
+let cups=[];                 // in-memory copy
+let editingId=null;          // id being edited (null = new)
+let pendingPhoto=null;       // Blob chosen in the form (undefined = keep existing)
+let photoRemoved=false;
+const urlCache=new Map();    // id -> objectURL
+function photoURL(cup){
+  if(!cup.photo) return null;
+  if(!urlCache.has(cup.id)) urlCache.set(cup.id, URL.createObjectURL(cup.photo));
+  return urlCache.get(cup.id);
+}
+function dropURL(id){
+  if(urlCache.has(id)){ URL.revokeObjectURL(urlCache.get(id)); urlCache.delete(id); }
+}
+
+// ================= Map =================
+const map=L.map("map",{worldCopyJump:true, minZoom:2}).setView([25,15],2);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  maxZoom:18
+}).addTo(map);
+let markerLayer=L.layerGroup().addTo(map);
+
+function renderMap(view){
+  markerLayer.clearLayers();
+  const byCountry=new Map();
+  for(const c of view){
+    if(!byCountry.has(c.country)) byCountry.set(c.country,[]);
+    byCountry.get(c.country).push(c);
+  }
+  for(const [code,items] of byCountry){
+    const info=CMAP.get(code); if(!info) continue;
+    const col=countryColor(code);
+    const size=items.length>1?34:28;
+    const icon=L.divIcon({
+      className:"", iconSize:[size,size], iconAnchor:[size/2,size],
+      html:`<div class="pin" style="width:${size}px;height:${size}px;background:${col}"><span>${items.length}</span></div>`
+    });
+    const m=L.marker([info.lat,info.lng],{icon}).addTo(markerLayer);
+    m.bindPopup(()=>popupHTML(code,items),{minWidth:200});
+  }
+}
+function popupHTML(code,items){
+  const wrap=document.createElement("div");
+  wrap.innerHTML=`<b>${flagEmoji(code)} ${esc(countryName(code))}</b> — ${items.length} cup${items.length>1?"s":""}`;
+  for(const cup of items){
+    const row=document.createElement("div");
+    row.className="pop-cup";
+    const u=photoURL(cup);
+    row.innerHTML=(u?`<img src="${u}" alt="">`:`<div class="ph">☕</div>`)+`<span>${esc(cup.name)}</span>`;
+    row.addEventListener("click",()=>openDetail(cup.id));
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+// ================= Rendering =================
+const $=id=>document.getElementById(id);
+function currentView(){
+  const q=$("q").value.trim().toLowerCase();
+  const fc=$("fCountry").value, fs=$("fSeries").value;
+  return cups.filter(c=>{
+    if(fc && c.country!==fc) return false;
+    if(fs && c.series!==fs) return false;
+    if(q){
+      const hay=`${c.name} ${c.city||""} ${c.notes||""} ${countryName(c.country)} ${c.series||""}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a,b)=>(b.date||"").localeCompare(a.date||"") || b.created-a.created);
+}
+function render(){
+  const view=currentView();
+  // stats (always on full set)
+  $("statCups").textContent=cups.length;
+  $("statCountries").textContent=new Set(cups.map(c=>c.country)).size;
+  // list
+  const list=$("list");
+  list.innerHTML="";
+  if(!view.length){
+    list.innerHTML=`<div class="empty"><div class="big">☕🌍</div>
+      ${cups.length? "No cups match the current filters.":"Your collection is empty.<br>Hit the <b>+</b> button to log your first Starbucks cup!"}</div>`;
+  }
+  for(const cup of view){
+    const card=document.createElement("div");
+    card.className="card";
+    const u=photoURL(cup), col=countryColor(cup.country);
+    card.innerHTML=`
+      <div class="thumb">${u?`<img src="${u}" alt="" loading="lazy">`:"☕"}
+        <span class="country-tag" style="background:${col}">${flagEmoji(cup.country)} ${esc(countryName(cup.country))}</span>
+      </div>
+      <div class="body">
+        <h3>${esc(cup.name)}</h3>
+        <div class="meta"><span>${esc(cup.series||"")}</span><span>${esc(cup.date||"")}</span></div>
+      </div>`;
+    card.addEventListener("click",()=>openDetail(cup.id));
+    list.appendChild(card);
+  }
+  // legend chips (full set, sorted by count)
+  const counts=new Map();
+  for(const c of cups) counts.set(c.country,(counts.get(c.country)||0)+1);
+  const legend=$("legend");
+  legend.innerHTML="";
+  [...counts.entries()].sort((a,b)=>b[1]-a[1]).forEach(([code,n])=>{
+    const chip=document.createElement("div");
+    chip.className="legend-chip";
+    chip.innerHTML=`<span class="dot" style="background:${countryColor(code)}"></span>${flagEmoji(code)} ${esc(countryName(code))} <span class="cnt">×${n}</span>`;
+    chip.title="Click: filter list · Double-click: fly to country";
+    chip.addEventListener("click",()=>{ $("fCountry").value=($("fCountry").value===code?"":code); render(); });
+    chip.addEventListener("dblclick",()=>{ const i=CMAP.get(code); if(i) map.flyTo([i.lat,i.lng],5); });
+    legend.appendChild(chip);
+  });
+  // filter dropdowns (preserve selection)
+  syncFilterOptions(counts);
+  renderMap(view);
+}
+function syncFilterOptions(counts){
+  const sel=$("fCountry"), cur=sel.value;
+  sel.innerHTML=`<option value="">All countries</option>`+
+    [...counts.keys()].sort((a,b)=>countryName(a).localeCompare(countryName(b)))
+      .map(c=>`<option value="${c}">${flagEmoji(c)} ${esc(countryName(c))}</option>`).join("");
+  sel.value=cur && counts.has(cur)?cur:"";
+  const ss=$("fSeries"), curS=ss.value;
+  const series=[...new Set(cups.map(c=>c.series).filter(Boolean))].sort();
+  ss.innerHTML=`<option value="">All series</option>`+series.map(s=>`<option>${esc(s)}</option>`).join("");
+  ss.value=series.includes(curS)?curS:"";
+}
+
+// ================= Toast =================
+let toastT=null;
+function toast(msg){
+  const t=$("toast"); t.textContent=msg; t.style.display="block";
+  clearTimeout(toastT); toastT=setTimeout(()=>t.style.display="none",2600);
+}
+
+// ================= Modals =================
+function openModal(id){ $(id).classList.add("open"); }
+function closeModal(id){ $(id).classList.remove("open"); if(id==="camModal") stopCamera(); }
+document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>closeModal(b.dataset.close)));
+document.querySelectorAll(".modal-back").forEach(mb=>mb.addEventListener("click",e=>{ if(e.target===mb) closeModal(mb.id); }));
+
+// ================= Country combo =================
+const comboIn=$("fCountryIn"), comboCode=$("fCountryCode"), comboList=$("comboList");
+function comboRender(filter){
+  const f=(filter||"").toLowerCase();
+  const hits=COUNTRIES.filter(c=>c[1].toLowerCase().includes(f)||c[0].toLowerCase()===f).slice(0,60);
+  comboList.innerHTML="";
+  for(const c of hits){
+    const it=document.createElement("div");
+    it.className="combo-item";
+    it.innerHTML=`<span class="dot" style="background:${countryColor(c[0])}"></span>${flagEmoji(c[0])} ${esc(c[1])}`;
+    it.addEventListener("mousedown",e=>{ e.preventDefault(); comboPick(c[0]); });
+    comboList.appendChild(it);
+  }
+  comboList.classList.toggle("open",hits.length>0);
+}
+function comboPick(code){
+  comboCode.value=code;
+  comboIn.value=`${flagEmoji(code)} ${countryName(code)}`;
+  comboList.classList.remove("open");
+}
+comboIn.addEventListener("focus",()=>{ comboIn.select(); comboRender(""); });
+comboIn.addEventListener("input",()=>{ comboCode.value=""; comboRender(comboIn.value); });
+comboIn.addEventListener("blur",()=>setTimeout(()=>comboList.classList.remove("open"),150));
+
+// ================= Photo handling =================
+async function resizeImage(fileOrBlob,maxDim=1400,quality=0.85){
+  const img=await new Promise((res,rej)=>{
+    const u=URL.createObjectURL(fileOrBlob);
+    const im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(u); res(im); };
+    im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error("Could not read image")); };
+    im.src=u;
+  });
+  const scale=Math.min(1,maxDim/Math.max(img.width,img.height));
+  const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+  const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+  cv.getContext("2d").drawImage(img,0,0,w,h);
+  return new Promise(res=>cv.toBlob(b=>res(b),"image/jpeg",quality));
+}
+let previewURL=null; // object URL owned by the form preview (cache URLs are managed separately)
+function clearPreviewURL(){
+  if(previewURL){ URL.revokeObjectURL(previewURL); previewURL=null; }
+}
+function setPendingPhoto(blob){
+  pendingPhoto=blob; photoRemoved=false;
+  clearPreviewURL();
+  previewURL=URL.createObjectURL(blob);
+  $("photoPreviewImg").src=previewURL;
+  $("photoPreview").style.display="block";
+}
+async function handlePhotoInput(input){
+  const f=input.files && input.files[0];
+  input.value="";
+  if(!f) return;
+  try{ setPendingPhoto(await resizeImage(f)); }
+  catch(e){ toast("⚠ Couldn't read that image"); }
+}
+$("btnPickPhoto").addEventListener("click",()=>$("photoFile").click());
+$("photoFile").addEventListener("change",e=>handlePhotoInput(e.target));
+$("photoCapture").addEventListener("change",e=>handlePhotoInput(e.target));
+$("btnRemovePhoto").addEventListener("click",()=>{
+  pendingPhoto=null; photoRemoved=true;
+  clearPreviewURL();
+  $("photoPreview").style.display="none"; $("photoPreviewImg").src="";
+});
+
+// Camera (getUserMedia on desktop / secure contexts; falls back to capture input)
+let camStream=null;
+$("btnCamera").addEventListener("click",async()=>{
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $("photoCapture").click(); // mobile fallback: native camera sheet
+    return;
+  }
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1920}},audio:false});
+    $("camVideo").srcObject=camStream;
+    openModal("camModal");
+  }catch(e){
+    $("photoCapture").click(); // permission denied / unavailable → native input
+  }
+});
+function stopCamera(){
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  $("camVideo").srcObject=null;
+}
+$("camClose").addEventListener("click",()=>closeModal("camModal"));
+$("camShot").addEventListener("click",async()=>{
+  const v=$("camVideo");
+  if(!v.videoWidth){ toast("Camera not ready yet…"); return; }
+  try{
+    const cv=document.createElement("canvas");
+    cv.width=v.videoWidth; cv.height=v.videoHeight;
+    cv.getContext("2d").drawImage(v,0,0);
+    const blob=await new Promise(res=>cv.toBlob(b=>res(b),"image/jpeg",0.9));
+    if(blob) setPendingPhoto(await resizeImage(blob));
+  }catch(err){
+    toast("⚠ Capture failed — try again");
+  }finally{
+    closeModal("camModal"); // also stops the camera stream
+  }
+});
+
+// ================= Add / Edit =================
+$("btnAdd").addEventListener("click",()=>openForm(null));
+function openForm(cup){
+  editingId=cup?cup.id:null;
+  pendingPhoto=null; photoRemoved=false;
+  clearPreviewURL();
+  $("formTitle").textContent=cup?"Edit cup":"Add a cup";
+  $("fName").value=cup?cup.name:"";
+  if(cup){ comboPick(cup.country); } else { comboIn.value=""; comboCode.value=""; }
+  $("fCity").value=cup?(cup.city||""):"";
+  const seriesVal=cup?(cup.series||"Other"):"You Are Here";
+  const seriesSel=$("fSeriesIn");
+  if(![...seriesSel.options].some(o=>o.value===seriesVal)){
+    const o=document.createElement("option"); o.textContent=seriesVal; seriesSel.appendChild(o);
+  }
+  seriesSel.value=seriesVal;
+  $("fDate").value=cup?(cup.date||""):new Date().toISOString().slice(0,10);
+  $("fNotes").value=cup?(cup.notes||""):"";
+  const existing=cup?photoURL(cup):null;
+  $("photoPreviewImg").src=existing||"";
+  $("photoPreview").style.display=existing?"block":"none";
+  openModal("formModal");
+  setTimeout(()=>$("fName").focus(),50);
+}
+$("cupForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const code=comboCode.value;
+  if(!code || !CMAP.has(code)){ toast("Pick a country from the list"); comboIn.focus(); return; }
+  const existing=editingId?cups.find(c=>c.id===editingId):null;
+  const cup={
+    id: editingId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random().toString(16).slice(2)),
+    name: $("fName").value.trim(),
+    country: code,
+    city: $("fCity").value.trim(),
+    series: $("fSeriesIn").value,
+    date: $("fDate").value,
+    notes: $("fNotes").value.trim(),
+    created: existing?existing.created:Date.now(),
+    photo: photoRemoved?null:(pendingPhoto||(existing?existing.photo:null))
+  };
+  if(!cup.name){ toast("Give the cup a name"); return; }
+  try{ await dbPut(cup); }
+  catch(err){ toast("⚠ Save failed — storage error (out of space?)"); return; }
+  dropURL(cup.id); // photo may have changed
+  clearPreviewURL();
+  if(existing) cups[cups.indexOf(existing)]=cup; else cups.push(cup);
+  closeModal("formModal");
+  toast(existing?"Cup updated ✔":"Cup added ✔ "+flagEmoji(code));
+  render();
+});
+
+// ================= Detail =================
+let detailId=null;
+function openDetail(id){
+  const cup=cups.find(c=>c.id===id); if(!cup) return;
+  detailId=id;
+  $("dTitle").textContent=cup.name;
+  const u=photoURL(cup);
+  const ph=$("dPhoto");
+  if(u){ ph.src=u; ph.style.display="block"; } else { ph.style.display="none"; }
+  $("dRows").innerHTML=`
+    <div><b>Country</b> ${flagEmoji(cup.country)} ${esc(countryName(cup.country))}</div>
+    ${cup.city?`<div><b>City</b> ${esc(cup.city)}</div>`:""}
+    <div><b>Series</b> ${esc(cup.series||"—")}</div>
+    <div><b>Acquired</b> ${esc(cup.date||"—")}</div>
+    ${cup.notes?`<div><b>Notes</b> ${esc(cup.notes)}</div>`:""}`;
+  map.closePopup();
+  openModal("detailModal");
+}
+$("dEdit").addEventListener("click",()=>{
+  const cup=cups.find(c=>c.id===detailId);
+  closeModal("detailModal");
+  if(cup) openForm(cup);
+});
+$("dDelete").addEventListener("click",async()=>{
+  const cup=cups.find(c=>c.id===detailId); if(!cup) return;
+  if(!confirm(`Delete "${cup.name}"? This can't be undone.`)) return;
+  try{ await dbDel(cup.id); }
+  catch(err){ toast("⚠ Delete failed — try again"); return; }
+  dropURL(cup.id);
+  cups=cups.filter(c=>c.id!==cup.id);
+  closeModal("detailModal");
+  toast("Cup deleted");
+  render();
+});
+
+// ================= Backup / Import =================
+function blobToDataURL(blob){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result); r.onerror=()=>rej(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+async function dataURLToBlob(u){ return (await fetch(u)).blob(); }
+$("btnExport").addEventListener("click",async()=>{
+  try{
+    const out=[];
+    for(const c of cups){
+      out.push({...c, photo: c.photo? await blobToDataURL(c.photo):null});
+    }
+    const blob=new Blob([JSON.stringify({app:"cupatlas",version:1,exported:new Date().toISOString(),cups:out},null,1)],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`cup-atlas-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    toast(`Backup downloaded (${cups.length} cups)`);
+  }catch(err){
+    toast("⚠ Backup failed — try again");
+  }
+});
+$("btnImport").addEventListener("click",()=>$("importFile").click());
+$("importFile").addEventListener("change",async e=>{
+  const f=e.target.files && e.target.files[0];
+  e.target.value="";
+  if(!f) return;
+  try{
+    const data=JSON.parse(await f.text());
+    const arr=Array.isArray(data)?data:data.cups;
+    if(!Array.isArray(arr)) throw new Error("bad format");
+    let added=0,updated=0;
+    for(const raw of arr){
+      if(!raw || !raw.id || !raw.name || !CMAP.has(raw.country)) continue;
+      const cup={
+        id:String(raw.id), name:String(raw.name).slice(0,80), country:raw.country,
+        city:String(raw.city||"").slice(0,60), series:String(raw.series||"Other").slice(0,40),
+        date:String(raw.date||"").slice(0,10), notes:String(raw.notes||"").slice(0,500),
+        created:Number(raw.created)||Date.now(),
+        photo:(typeof raw.photo==="string" && raw.photo.startsWith("data:"))? await dataURLToBlob(raw.photo)
+              : (raw.photo instanceof Blob? raw.photo : null)
+      };
+      const i=cups.findIndex(c=>c.id===cup.id);
+      await dbPut(cup);
+      dropURL(cup.id);
+      if(i>=0){ cups[i]=cup; updated++; } else { cups.push(cup); added++; }
+    }
+    toast(`Import done — ${added} added, ${updated} updated`);
+    render();
+  }catch(err){
+    toast("⚠ Import failed — not a Cup Atlas backup?");
+  }
+});
+
+// ================= Filters =================
+["q","fCountry","fSeries"].forEach(id=>{
+  $(id).addEventListener("input",render);
+  $(id).addEventListener("change",render); // older Safari doesn't fire "input" on <select>
+});
+
+// ================= Boot =================
+(async function(){
+  try{ db=await openDB(); }
+  catch(e){
+    document.body.innerHTML=`<div style="padding:40px;font-family:sans-serif">
+      <h2>Storage unavailable</h2><p>This browser blocked IndexedDB (private mode?). Cup Atlas needs it to save your collection.</p></div>`;
+    return;
+  }
+  cups=await dbAll();
+  render();
+  if(cups.length){
+    // fit map to the collection on load
+    const pts=[...new Set(cups.map(c=>c.country))].map(c=>CMAP.get(c)).filter(Boolean).map(c=>[c.lat,c.lng]);
+    if(pts.length===1) map.setView(pts[0],4);
+    else if(pts.length>1) map.fitBounds(L.latLngBounds(pts).pad(0.3));
+  }
+  if("serviceWorker" in navigator && location.protocol!=="file:"){
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  }
+})();
+</script>
+</body>
+</html>
