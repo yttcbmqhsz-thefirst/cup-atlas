@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
   if (action === "recognize") {
     const photo = String(body.photo_b64 ?? "").replace(/^data:[^,]+,/, "");
     if (!photo) return json({ error: "photo_b64 required" }, 400);
-    const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.0-flash";
+    const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-flash-latest";
     const prompt =
       `This is a photo of a Starbucks collectible cup or mug. These cups usually have a city or country name printed on them (series like "You Are Here", "Been There", city mugs). Identify it and answer with JSON only:
 {"name": short display name like "You Are Here — Tokyo" (or best guess), "country_code": ISO-3166-1 alpha-2 code of the place shown on the cup (or "" if unknown), "city": city name if identifiable else "", "series": one of ${JSON.stringify(SERIES)}, "confidence": 0..1}`;
