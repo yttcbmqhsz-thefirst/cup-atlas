@@ -1,5 +1,5 @@
 // Cup Atlas API — PIN-gated writes + Gemini cup recognition.
-// Secrets (set via `supabase secrets set`): CUP_PIN, GEMINI_API_KEY.
+// Secrets (set via `supabase secrets set`): CUP_PINS (JSON {"pin":"Name",...}), GEMINI_API_KEY.
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -33,7 +33,12 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? "");
   const pin = String(body.pin ?? "");
 
-  if (!pin || pin !== Deno.env.get("CUP_PIN")) return json({ error: "wrong PIN" }, 401);
+  // Per-person PINs: CUP_PINS = {"1174":"Dad", ...}. The PIN identifies who is saving.
+  let pinMap: Record<string, string> = {};
+  try { pinMap = JSON.parse(Deno.env.get("CUP_PINS") ?? "{}"); } catch { /* stays empty */ }
+  const person = pin && typeof pinMap[pin] === "string" ? pinMap[pin] : null;
+  if (!person) return json({ error: "wrong PIN" }, 401);
+  const people = Object.values(pinMap);
 
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -51,8 +56,10 @@ Deno.serve(async (req) => {
       series: String(c.series ?? "Other").slice(0, 40),
       date: /^\d{4}-\d{2}-\d{2}$/.test(String(c.date ?? "")) ? c.date : null,
       notes: String(c.notes ?? "").trim().slice(0, 500),
+      bought_by: people.includes(String(c.bought_by ?? "")) ? String(c.bought_by) : "",
     };
     if (typeof c.id === "string" && /^[0-9a-f-]{36}$/.test(c.id)) row.id = c.id;
+    else row.added_by = person; // new cup: stamp who added it (edits keep the original)
 
     // Insert/update first to get the id, then attach the photo.
     const { data: saved, error } = await sb.from("cups").upsert(row).select().single();

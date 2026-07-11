@@ -275,12 +275,21 @@
         <input type="date" id="fDate">
       </div>
       <div class="field">
+        <label>Bought by</label>
+        <select id="fBought">
+          <option value="">— not sure —</option>
+          <option>Eliad</option>
+          <option>Dad</option>
+          <option>Sister</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Notes</label>
         <textarea id="fNotes" maxlength="500" placeholder="Where you got it, who gave it, condition…"></textarea>
       </div>
       <div class="field">
-        <label>PIN (required to save)</label>
-        <input id="fPin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Shared PIN">
+        <label>Your PIN (identifies who's saving)</label>
+        <input id="fPin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Your personal PIN">
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" data-close="formModal">Cancel</button>
@@ -521,6 +530,7 @@ function render(){
       <div class="body">
         <h3>${esc(cup.name)}</h3>
         <div class="meta"><span>${esc(cup.series||"")}</span><span>${esc(cup.date||"")}</span></div>
+        ${cup.added_by||cup.bought_by?`<div class="meta" style="margin-top:3px"><span>${cup.added_by?"📸 "+esc(cup.added_by):""}</span><span>${cup.bought_by?"🛍 "+esc(cup.bought_by):""}</span></div>`:""}
       </div>`;
     card.addEventListener("click",()=>openDetail(cup.id));
     list.appendChild(card);
@@ -722,6 +732,7 @@ function openForm(cup){
   }
   seriesSel.value=seriesVal;
   $("fDate").value=cup?(cup.date||""):new Date().toISOString().slice(0,10);
+  $("fBought").value=cup?(cup.bought_by||""):"";
   $("fNotes").value=cup?(cup.notes||""):"";
   const existing=cup?photoURL(cup):null;
   $("photoPreviewImg").src=existing||"";
@@ -745,6 +756,7 @@ $("cupForm").addEventListener("submit",async e=>{
     city: $("fCity").value.trim(),
     series: $("fSeriesIn").value,
     date: $("fDate").value||null,
+    bought_by: $("fBought").value,
     notes: $("fNotes").value.trim()
   }};
   if(pendingPhoto) payload.photo_b64=await blobToDataURL(pendingPhoto);
@@ -781,6 +793,8 @@ function openDetail(id){
     ${cup.city?`<div><b>City</b> ${esc(cup.city)}</div>`:""}
     <div><b>Series</b> ${esc(cup.series||"—")}</div>
     <div><b>Acquired</b> ${esc(cup.date||"—")}</div>
+    ${cup.added_by?`<div><b>Added by</b> 📸 ${esc(cup.added_by)}</div>`:""}
+    ${cup.bought_by?`<div><b>Bought by</b> 🛍 ${esc(cup.bought_by)}</div>`:""}
     ${cup.notes?`<div><b>Notes</b> ${esc(cup.notes)}</div>`:""}`;
   map.closePopup();
   openModal("detailModal");
@@ -853,6 +867,7 @@ $("importFile").addEventListener("change",async e=>{
         name:String(raw.name).slice(0,80), country:raw.country,
         city:String(raw.city||"").slice(0,60), series:String(raw.series||"Other").slice(0,40),
         date:/^\d{4}-\d{2}-\d{2}$/.test(String(raw.date||""))?String(raw.date):null,
+        bought_by:String(raw.bought_by||""),
         notes:String(raw.notes||"").slice(0,500)
       }};
       if(typeof raw.photo==="string" && raw.photo.startsWith("data:")) payload.photo_b64=raw.photo;
